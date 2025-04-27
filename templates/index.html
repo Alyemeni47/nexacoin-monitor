@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexaCoin Monitor Bot</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <style>
+        .log-container {
+            height: 400px;
+            overflow-y: auto;
+            background-color: var(--bs-dark);
+            border-radius: 5px;
+            padding: 10px;
+            font-family: monospace;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .log-INFO { color: var(--bs-info); }
+        .log-ERROR { color: var(--bs-danger); }
+        .log-WARNING { color: var(--bs-warning); }
+        .log-DEBUG { color: var(--bs-light); }
+        .log-CRITICAL { 
+            color: white;
+            background-color: var(--bs-danger);
+            padding: 5px; 
+        }
+        .status-card {
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h1 class="display-5">NexaCoin Monitor Bot</h1>
+                    <div>
+                        <span id="status-indicator" class="badge bg-secondary">Offline</span>
+                    </div>
+                </div>
+                <p class="lead">Automatically monitors and redistributes NexaCoin transfers</p>
+            </div>
+        </div>
+
+        <!-- Configuration Status Row -->
+        <div class="row mb-4">
+            <div class="col-12 col-md-6">
+                <div class="card status-card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Bot Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Status:
+                                <span id="running-status">Offline</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Last Checked:
+                                <span id="last-checked">Never</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Transactions Processed:
+                                <span id="transactions-processed">0</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex gap-2">
+                            <button id="start-bot" class="btn btn-primary" {{ 'disabled' if not env_vars_set }}>Start Bot</button>
+                            <button id="stop-bot" class="btn btn-danger" disabled>Stop Bot</button>
+                        </div>
+                        {% if not env_vars_set %}
+                        <div class="alert alert-warning mt-3">
+                            <strong>Missing configuration!</strong> Please set all required environment variables.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6">
+                <div class="card status-card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Monitored Account:
+                                <span>{{ 'Configured' if env_vars_set else 'Not Set' }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Private Key:
+                                <span>{{ 'Configured' if env_vars_set else 'Not Set' }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Token Mint:
+                                <span>{{ 'Configured' if env_vars_set else 'Not Set' }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Destination Addresses:
+                                <span>{{ 'Configured' if env_vars_set else 'Not Set' }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log Display -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Bot Logs</h5>
+                        <button id="refresh-logs" class="btn btn-sm btn-outline-secondary">Refresh</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="log-container" class="log-container">
+                            <div id="logs-placeholder" class="text-center text-muted pt-5">
+                                <p>No logs available</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const startButton = document.getElementById('start-bot');
+        const stopButton = document.getElementById('stop-bot');
+        const refreshLogsButton = document.getElementById('refresh-logs');
+        const logContainer = document.getElementById('log-container');
+        const logsPlaceholder = document.getElementById('logs-placeholder');
+        const statusIndicator = document.getElementById('status-indicator');
+        const runningStatus = document.getElementById('running-status');
+        const lastChecked = document.getElementById('last-checked');
+        const transactionsProcessed = document.getElementById('transactions-processed');
+
+        // Event Listeners
+        startButton.addEventListener('click', startBot);
+        stopButton.addEventListener('click', stopBot);
+        refreshLogsButton.addEventListener('click', fetchLogs);
+
+        // Fetch bot status periodically
+        fetchStatus();
+        fetchLogs();
+        setInterval(fetchStatus, 5000);
+        setInterval(fetchLogs, 10000);
+
+        // API Functions
+        function startBot() {
+            fetch('/start_bot', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Bot started:', data);
+                updateUI();
+            })
+            .catch(error => console.error('Error starting bot:', error));
+        }
+
+        function stopBot() {
+            fetch('/stop_bot', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Bot stopped:', data);
+                updateUI();
+            })
+            .catch(error => console.error('Error stopping bot:', error));
+        }
+
+        function fetchStatus() {
+            fetch('/status')
+            .then(response => response.json())
+            .then(data => {
+                updateStatusUI(data);
+            })
+            .catch(error => console.error('Error fetching status:', error));
+        }
+
+        function fetchLogs() {
+            fetch('/logs')
+            .then(response => response.json())
+            .then(data => {
+                updateLogsUI(data.logs);
+            })
+            .catch(error => console.error('Error fetching logs:', error));
+        }
+
+        // UI Update Functions
+        function updateStatusUI(status) {
+            // Update running status
+            if (status.running) {
+                statusIndicator.textContent = 'Online';
+                statusIndicator.className = 'badge bg-success';
+                runningStatus.textContent = 'Running';
+                runningStatus.className = 'badge bg-success';
+                startButton.disabled = true;
+                stopButton.disabled = false;
+            } else {
+                statusIndicator.textContent = 'Offline';
+                statusIndicator.className = 'badge bg-secondary';
+                runningStatus.textContent = 'Stopped';
+                runningStatus.className = 'badge bg-secondary';
+                startButton.disabled = false;
+                stopButton.disabled = true;
+            }
+
+            // Update last checked time
+            lastChecked.textContent = status.last_checked || 'Never';
+            
+            // Update transactions processed
+            transactionsProcessed.textContent = status.transactions_processed || '0';
+        }
+
+        function updateLogsUI(logs) {
+            if (logs && logs.length > 0) {
+                logsPlaceholder.style.display = 'none';
+                
+                // Clear existing logs and add new ones
+                logContainer.innerHTML = '';
+                logs.forEach(log => {
+                    const logEntry = document.createElement('div');
+                    logEntry.className = `log-entry log-${log.level}`;
+                    logEntry.textContent = `[${log.timestamp}] ${log.level}: ${log.message}`;
+                    logContainer.appendChild(logEntry);
+                });
+                
+                // Scroll to bottom
+                logContainer.scrollTop = logContainer.scrollHeight;
+            } else {
+                logsPlaceholder.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
