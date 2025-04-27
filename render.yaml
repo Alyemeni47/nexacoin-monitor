@@ -2,8 +2,9 @@ services:
   - type: web
     name: nexacoin-monitor
     env: python
-    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
-    startCommand: "python main.py"
+    plan: free
+    buildCommand: ""
+    startCommand: python main.py
     envVars:
-      - key: PRIVATE_KEY
-        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.11
